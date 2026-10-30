@@ -105,10 +105,22 @@ const K='upkk_semua_v2';let DB=JSON.parse(localStorage.getItem(K)||'{"cur":"","u
 function save(){localStorage.setItem(K,JSON.stringify(DB))}
 function useUser(n){n=String(n||'').trim().replace(/\s+/g,' ').slice(0,40);if(!n)return false;const k=n.toLowerCase();
  if(!DB.u[k])DB.u[k]={nama:n,best:{},wrong:[],seen:{},log:[]};DB.cur=k;S=DB.u[k];save();return true}
-function setName(){if(useUser($('nm').value))home();else $('nm').focus()}
+const API='https://wazir.srv1987341.hstgr.cloud/oauth/kuiz/sync';let _t=0,_busy=0;
+function byId(){if(!byId.m){byId.m={};Object.values(D).forEach(a=>a.forEach(q=>byId.m[q.id]=q))}return byId.m}
+function syncNow(ms){if(!S.nama)return Promise.resolve(false);const c=new AbortController(),tm=setTimeout(()=>c.abort(),ms||8000);
+ return fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},signal:c.signal,body:JSON.stringify({nama:S.nama,seen:S.seen,best:S.best,sesi:S.sesi||null,st:S.st||0})})
+ .then(r=>r.json()).then(r=>{clearTimeout(tm);if(!r.ok)return false;const playing=!$('play').classList.contains('hide');
+  Object.assign(S.seen,r.seen);Object.keys(r.seen).forEach(k=>S.seen[k]=r.seen[k]);S.best=Object.assign({},S.best,r.best);
+  if(!playing&&(r.st||0)>=(S.st||0)){S.sesi=r.sesi;S.st=r.st||0}
+  S.wrong=Object.keys(S.seen).filter(k=>S.seen[k].w&&byId()[k]);save();return true}).catch(()=>{clearTimeout(tm);return false})}
+function sync(){clearTimeout(_t);_t=setTimeout(()=>syncNow(),1500)}
+function setSesi(){S.st=Date.now();S.sesi=Q.length&&cur!==undefined?{ids:Q.map(q=>q.id),i:i,sc:sc,s:cur||'',t:S.st}:null;save();sync()}
+function lanjut(){const z=S.sesi;if(!z)return;const a=z.ids.map(k=>byId()[k]).filter(Boolean);if(z.i>=a.length){S.sesi=null;S.st=Date.now();save();return home()}
+ last=z.s?{s:z.s,j:'',o:'r',c:a.length}:{s:null};Q=a;i=z.i;sc=z.sc||0;streak=0;cur=z.s||null;show('play');render()}
+function setName(){const b=document.querySelector('#who .btn');if(!useUser($('nm').value))return $('nm').focus();b.textContent='Menyemak rekod...';syncNow(4000).then(()=>{b.textContent='Mula ➜';home()})}
 function ask(){show('who');$('sub').textContent='';$('nm').value='';const ks=Object.keys(DB.u);
  $('olds').innerHTML=ks.length?'<div class="note">Atau pilih nama yang pernah guna telefon ini:</div>':'';
- ks.forEach(k=>{const b=document.createElement('button');b.className='btn sec';b.textContent=DB.u[k].nama;b.onclick=()=>{useUser(DB.u[k].nama);home()};$('olds').appendChild(b)})}
+ ks.forEach(k=>{const b=document.createElement('button');b.className='btn sec';b.textContent=DB.u[k].nama;b.onclick=()=>{useUser(DB.u[k].nama);b.textContent='Menyemak rekod...';syncNow(4000).then(()=>home())};$('olds').appendChild(b)})}
 function unseen(s){return D[s].filter(q=>!S.seen[q.id]).length}
 function pickOrder(p,o){const nw=p.filter(q=>!S.seen[q.id]),old=p.filter(q=>S.seen[q.id]).sort((a,b)=>S.seen[a.id].t-S.seen[b.id].t);return (o=='r'?shuf(nw):nw).concat(old)}
 function rekod(){show('rec');$('sub').textContent='';const T=Object.keys(D).map(s=>{const a=D[s].filter(q=>S.seen[q.id]);let n=0,ok=0;a.forEach(q=>{n+=S.seen[q.id].n;ok+=S.seen[q.id].ok});return {s,tot:D[s].length,dj:a.length,n,ok}});
@@ -117,7 +129,7 @@ function rekod(){show('rec');$('sub').textContent='';const T=Object.keys(D).map(
  $('rec').innerHTML='<b style="font-size:1.2rem"></b><pre id="rtx" style="white-space:pre-wrap;font:inherit;line-height:1.6"></pre><button class="btn" id="cp">📋 Salin rekod</button><button class="btn sec" onclick="home()">🏠 Menu Utama</button>';
  $('rec').firstChild.textContent='📋 Rekod '+S.nama;$('rtx').textContent=txt;
  $('cp').onclick=()=>{(navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>{$('cp').textContent='✅ Disalin'}).catch(()=>{const r=document.createRange();r.selectNodeContents($('rtx'));const g=getSelection();g.removeAllRanges();g.addRange(r);$('cp').textContent='Teks dipilih, tekan Salin'})}}
-let Q=[],i=0,sc=0,streak=0,last={},cur=null,sel='',cnt=10;
+let i0=0,Q=[],i=0,sc=0,streak=0,last={},cur=null,sel='',cnt=10;
 function esc(t){return String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 function shuf(a){a=a.slice();for(let j=a.length-1;j>0;j--){const k=Math.random()*(j+1)|0;[a[j],a[k]]=[a[k],a[j]]}return a}
 function show(x){['home','play','end','who','rec'].forEach(s=>$(s).classList.toggle('hide',s!=x));$('dock').classList.add('hide');$('back').classList.toggle('hide',x=='home'||x=='who');
@@ -125,6 +137,9 @@ function show(x){['home','play','end','who','rec'].forEach(s=>$(s).classList.tog
 function home(){if(!S.nama)return ask();show('home');$('panel').classList.add('hide');sel='';
  $('tiles').innerHTML=Object.keys(D).map(s=>`<button class="tile" style="background:${SUB[s][1]}" onclick="choose('${s}')"><span>${SUB[s][0]}</span>${s}<small>${D[s].length} soalan · ${unseen(s)} baru${S.best[s]?' · terbaik '+S.best[s]+'%':''}</small></button>`).join('');
  $('best').innerHTML='<b></b> 👋<div class="note" style="margin:2px 0 0">Tekan satu subjek untuk mula · soalan yang belum dijawab diutamakan</div><div style="display:flex;gap:8px;margin-top:8px"><button class="chip" onclick="rekod()">📋 Rekod saya</button><button class="chip" onclick="ask()">🔁 Tukar nama</button></div>';$('best').firstChild.textContent='Assalamualaikum, '+S.nama+'!';
+ const z=S.sesi&&S.sesi.ids&&S.sesi.i<S.sesi.ids.length?S.sesi:null;let rb=$('rbtn');
+ if(!rb){rb=document.createElement('button');rb.id='rbtn';rb.className='btn';rb.onclick=lanjut;$('wbtn').parentNode.insertBefore(rb,$('tiles'))}
+ rb.classList.toggle('hide',!z);if(z)rb.textContent='▶ Sambung kuiz'+(z.s?' '+z.s:'')+' (soalan '+(z.i+1)+' / '+z.ids.length+')';
  const w=S.wrong.length;$('wbtn').textContent='🔄 Ulang soalan yang pernah salah ('+w+')';$('wbtn').classList.toggle('hide',!w)}
 function choose(s){sel=s;$('ptitle').textContent=SUB[s][0]+' '+s;const j=$('jn');j.innerHTML='';j.add(new Option('Semua jenis ('+D[s].length+')',''));
  [...new Set(D[s].map(q=>q.jenis))].forEach(t=>j.add(new Option(JN[t]+' ('+D[s].filter(q=>q.jenis==t).length+')',t)));
@@ -133,7 +148,7 @@ function setCnt(c){cnt=c;$('chips').innerHTML=[[10,'10'],[20,'20'],[40,'40'],[0,
 function start(again){const s=again?last.s:sel,j=again?last.j:$('jn').value,o=again?last.o:$('ord').value,c=again?last.c:cnt;if(!s)return;last={s,j,o,c};
  let p=D[s].filter(q=>!j||q.jenis==j);p=pickOrder(p,o);if(c&&c<p.length)p=p.slice(0,c);run(p,s)}
 function startWrong(){const p=[].concat(...Object.values(D)).filter(q=>S.wrong.includes(q.id));if(p.length){last={s:null};run(shuf(p).slice(0,20),null)}}
-function run(a,s){Q=a;i=0;sc=0;streak=0;cur=s;show('play');render()}
+function run(a,s){Q=a;i=0;sc=0;streak=0;cur=s;setSesi();show('play');render()}
 function render(){const d=Q[i];$('no').textContent='Soalan '+(i+1)+' / '+Q.length;$('sc').textContent='⭐ '+sc+(streak>=3?'  🔥'+streak:'');
  $('pg').style.width=(i/Q.length*100)+'%';$('top').textContent=d.s+' · '+JN[d.jenis];
  const ins=$('ins');ins.textContent=d.arahan||'';ins.classList.toggle('hide',!d.arahan);const pe=$('pet');pe.textContent=d.petikan||'';pe.classList.toggle('hide',!d.petikan);
@@ -145,7 +160,7 @@ function render(){const d=Q[i];$('no').textContent='Soalan '+(i+1)+' / '+Q.lengt
 function warn(d){return d.v=='r'?'<div class="warn">💬 Jawapan ini dinilai sendiri oleh PA kerana kertas tidak jelas. Boleh tanya ustazah untuk pastikan.</div>':''}
 function fin(){$('nx').textContent=i+1<Q.length?'Seterusnya ➜':'Lihat Keputusan 🎉';$('dock').classList.remove('hide');save();
  setTimeout(()=>$('exp').scrollIntoView({behavior:'smooth',block:'center'}),120)}
-function mark(d,ok){const e=S.seen[d.id]||{n:0,ok:0};e.n++;if(ok)e.ok++;e.t=Date.now();S.seen[d.id]=e;S.log.push([e.t,d.id,ok?1:0]);if(S.log.length>3000)S.log=S.log.slice(-3000);if(ok){sc++;streak++;S.wrong=S.wrong.filter(e=>e!=d.id)}else{streak=0;if(!S.wrong.includes(d.id))S.wrong.push(d.id)}$('sc').textContent='⭐ '+sc+(streak>=3?'  🔥'+streak:'')}
+function mark(d,ok){const e=S.seen[d.id]||{n:0,ok:0};e.n++;if(ok)e.ok++;e.t=Date.now();e.w=ok?0:1;S.seen[d.id]=e;S.log.push([e.t,d.id,ok?1:0]);if(S.log.length>3000)S.log=S.log.slice(-3000);if(ok){sc++;streak++;S.wrong=S.wrong.filter(e=>e!=d.id)}else{streak=0;if(!S.wrong.includes(d.id))S.wrong.push(d.id)}$('sc').textContent='⭐ '+sc+(streak>=3?'  🔥'+streak:'');i0=i;i=i+1;setSesi();i=i0}
 const PRAISE=['Tahniah! 🎉','MasyaAllah, betul!','Bagus! 👏','Hebat! 🌟','Betul tu!'];
 function pick(k,b){const d=Q[i];document.querySelectorAll('.opt').forEach(o=>{o.disabled=true;if(+o.dataset.k==d.jawapan)o.classList.add('ok')});
  const ok=k==d.jawapan;if(!ok)b.classList.add('no');mark(d,ok);
@@ -156,7 +171,7 @@ function reveal(){const d=Q[i];$('rv').classList.add('hide');$('self').classList
  $('exp').className='fb good';$('exp').innerHTML='<div>Jawapan contoh:</div><div class="ans jawi" dir="auto">'+esc(d.jt||'(tiada jawapan contoh)')+'</div>'+(d.nota?'<div style="margin-top:8px">'+esc(d.nota)+'</div>':'')+warn(d);
  setTimeout(()=>$('exp').scrollIntoView({behavior:'smooth',block:'center'}),120)}
 function selfMark(ok){mark(Q[i],ok);$('self').classList.add('hide');fin()}
-function next(){if(++i<Q.length)return render();const p=Math.round(sc/Q.length*100);
+function next(){if(++i<Q.length)return render();S.sesi=null;S.st=Date.now();sync();const p=Math.round(sc/Q.length*100);
  if(cur&&Q.length>=10&&p>(S.best[cur]||0))S.best[cur]=p;save();show('end');
  $('st').textContent=p>=80?'⭐⭐⭐':p>=50?'⭐⭐☆':'⭐☆☆';$('fs').textContent=sc+' / '+Q.length;
  $('fm').textContent=p>=80?'MasyaAllah, cemerlang! ('+p+'%)':p>=50?'Bagus, teruskan belajar! ('+p+'%)':'Jangan putus asa, cuba lagi ya! ('+p+'%)';
